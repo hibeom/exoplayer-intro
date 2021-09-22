@@ -20,9 +20,31 @@ import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import com.example.exoplayer.databinding.ActivityPlayerBinding
+import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
+import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.SimpleExoPlayer
+import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
+import com.google.android.exoplayer2.util.Log
+import com.google.android.exoplayer2.util.MimeTypes
 import com.google.android.exoplayer2.util.Util
+
+private const val TAG = "PlayerActivity"
+
+private fun playbackStateListener(): Player.EventListener {
+    return object : Player.EventListener {
+        override fun onPlaybackStateChanged(state: Int) {
+            val stateString = when (state) {
+                ExoPlayer.STATE_IDLE -> "ExoPlayer.STATE_IDLE      -"
+                ExoPlayer.STATE_BUFFERING -> "ExoPlayer.STATE_BUFFERING -"
+                ExoPlayer.STATE_READY -> "ExoPlayer.STATE_READY     -"
+                ExoPlayer.STATE_ENDED -> "ExoPlayer.STATE_ENDED     -"
+                else -> "UNKNOWN_STATE             -"
+            }
+            Log.d(TAG, "changed state to $stateString")
+        }
+    }
+}
 
 /**
  * A fullscreen activity to play audio or video streams.
@@ -32,6 +54,8 @@ class PlayerActivity : AppCompatActivity() {
     private val viewBinding by lazy(LazyThreadSafetyMode.NONE) {
         ActivityPlayerBinding.inflate(layoutInflater)
     }
+
+    private val playbackStateListener: Player.EventListener = playbackStateListener()
 
     private var playWhenReady = true
     private var currentWindow = 0
@@ -45,14 +69,26 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun initializePlayer() {
+        val trackSelector = DefaultTrackSelector(this).apply {
+            setParameters(buildUponParameters().setMaxVideoSizeSd())
+        }
+
         player = SimpleExoPlayer.Builder(this)
+            .setTrackSelector(trackSelector)
             .build()
             .also {
                 viewBinding.videoView.player = it
                 val mediaItem = MediaItem.fromUri(getString(R.string.media_url_mp3))
                 it.setMediaItem(mediaItem)
+//                val secondMediaItem = MediaItem.fromUri(getString(R.string.media_url_mp4))
+                val secondMediaItem = MediaItem.Builder()
+                    .setUri(getString(R.string.media_url_dash))
+                    .setMimeType(MimeTypes.APPLICATION_MPD)
+                    .build()
+                it.addMediaItem(secondMediaItem)
                 it.playWhenReady = playWhenReady
                 it.seekTo(currentWindow, playbackPosition)
+                it.addListener(playbackStateListener)
                 it.prepare()
             }
     }
@@ -62,6 +98,8 @@ class PlayerActivity : AppCompatActivity() {
             playWhenReady = this.playWhenReady
             currentWindow = this.currentWindowIndex
             playbackPosition = this.currentPosition
+            removeListener(playbackStateListener)
+            release()
         }
         player = null
     }
@@ -82,6 +120,7 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+//        hideSystemUi()
         if (Util.SDK_INT < 24 || player == null) {
             initializePlayer()
         }
